@@ -13,6 +13,14 @@ import {
 export const runtime = "edge";
 
 export async function GET(request: NextRequest) {
+  const cache = await caches.open("lgtm-images");
+  const cacheKey = new Request(request.url);
+
+  let response = await cache.match(cacheKey);
+  if (response) {
+    return response;
+  }
+
   const { theme, text, emoji, color } = getSearchParams(request);
 
   const inputData = {
@@ -34,7 +42,17 @@ export async function GET(request: NextRequest) {
   try {
     const getLgtmData = await importLgtmDataModule(theme);
     const { element, options } = await getLgtmData(inputData);
-    return new ImageResponse(element, { ...options, status: 200 });
+    response = new ImageResponse(element, {
+      ...options,
+      status: 200,
+      headers: {
+        "CDN-Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
+
+    await cache.put(cacheKey, response.clone());
+
+    return response;
   } catch (error: unknown) {
     return await handleError(error, theme, inputData);
   }
